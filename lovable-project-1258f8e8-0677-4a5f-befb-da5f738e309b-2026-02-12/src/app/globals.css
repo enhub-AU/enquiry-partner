@@ -1,0 +1,151 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=DM+Mono:wght@400;500&display=swap');
+
+@layer base {
+  :root {
+    --background: 220 20% 97%;
+    --foreground: 220 25% 10%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 220 25% 10%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 220 25% 10%;
+
+    --primary: 36 80% 50%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 220 15% 92%;
+    --secondary-foreground: 220 25% 10%;
+
+    --muted: 220 15% 94%;
+    --muted-foreground: 220 10% 46%;
+
+    --accent: 220 18% 88%;
+    --accent-foreground: 220 25% 10%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 220 13% 90%;
+    --input: 220 13% 90%;
+    --ring: 36 80% 50%;
+
+    --radius: 0.625rem;
+
+    /* Lead temperature colors */
+    --hot: 0 84% 60%;
+    --hot-foreground: 0 0% 100%;
+    --warm: 36 96% 50%;
+    --warm-foreground: 0 0% 100%;
+    --cold: 210 60% 55%;
+    --cold-foreground: 0 0% 100%;
+
+    /* Channel colors */
+    --channel-sms: 145 63% 42%;
+    --channel-whatsapp: 142 70% 40%;
+    --channel-email: 220 60% 55%;
+    --channel-web: 260 50% 55%;
+    --channel-instagram: 330 80% 55%;
+    --channel-facebook: 220 70% 50%;
+    --channel-rea: 16 85% 55%;
+    --channel-domain: 200 75% 45%;
+
+    /* Surfaces */
+    --surface-elevated: 0 0% 100%;
+    --surface-sunken: 220 20% 95%;
+
+    --sidebar-background: 220 25% 12%;
+    --sidebar-foreground: 220 10% 85%;
+    --sidebar-primary: 36 80% 50%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 220 20% 18%;
+    --sidebar-accent-foreground: 220 10% 85%;
+    --sidebar-border: 220 15% 20%;
+    --sidebar-ring: 36 80% 50%;
+  }
+
+  .dark {
+    --background: 220 25% 7%;
+    --foreground: 220 10% 92%;
+
+    --card: 220 22% 10%;
+    --card-foreground: 220 10% 92%;
+
+    --popover: 220 22% 10%;
+    --popover-foreground: 220 10% 92%;
+
+    --primary: 36 80% 50%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 220 18% 15%;
+    --secondary-foreground: 220 10% 92%;
+
+    --muted: 220 18% 15%;
+    --muted-foreground: 220 10% 55%;
+
+    --accent: 220 18% 18%;
+    --accent-foreground: 220 10% 92%;
+
+    --destructive: 0 62% 30%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 220 15% 18%;
+    --input: 220 15% 18%;
+    --ring: 36 80% 50%;
+
+    --surface-elevated: 220 22% 12%;
+    --surface-sunken: 220 25% 5%;
+
+    --sidebar-background: 220 25% 5%;
+    --sidebar-foreground: 220 10% 85%;
+    --sidebar-primary: 36 80% 50%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 220 20% 10%;
+    --sidebar-accent-foreground: 220 10% 85%;
+    --sidebar-border: 220 15% 12%;
+    --sidebar-ring: 36 80% 50%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    font-family: 'DM Sans', system-ui, sans-serif;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'DM Sans', system-ui, sans-serif;
+    font-weight: 600;
+  }
+
+  code, pre, .font-mono {
+    font-family: 'DM Mono', monospace;
+  }
+}
+
+@layer utilities {
+  .text-gradient-brand {
+    @apply bg-clip-text text-transparent;
+    background-image: linear-gradient(135deg, hsl(36 80% 50%), hsl(36 90% 65%));
+  }
+
+  .surface-elevated {
+    background-color: hsl(var(--surface-elevated));
+  }
+
+  .surface-sunken {
+    background-color: hsl(var(--surface-sunken));
+  }
+
+  .animate-pulse-slow {
+    animation: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+}
