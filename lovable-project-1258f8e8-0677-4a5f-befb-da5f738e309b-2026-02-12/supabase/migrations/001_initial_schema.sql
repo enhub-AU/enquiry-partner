@@ -1,4 +1,9 @@
--- Users / Agents
+-- ============================================================
+-- 001_initial_schema.sql
+-- EnHub MVP schema — kept intentionally simple.
+-- ============================================================
+
+-- Agents / Users
 create table profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   full_name text,
@@ -6,7 +11,6 @@ create table profiles (
   phone text,
   agency_name text,
   avatar_url text,
-  ai_messaging_mode text default 'draft' check (ai_messaging_mode in ('draft', 'safe', 'full')),
   created_at timestamptz default now()
 );
 
@@ -24,31 +28,33 @@ create trigger on_auth_user_created
   after insert on auth.users
   for each row execute procedure public.handle_new_user();
 
--- Contacts (clients/leads)
+-- Contacts (leads / clients)
 create table contacts (
   id uuid primary key default gen_random_uuid(),
   profile_id uuid references profiles(id) on delete cascade not null,
   name text not null,
   email text,
   phone text,
+  source text,
   created_at timestamptz default now(),
   unique(profile_id, email)
 );
 
--- Enquiries (conversations)
+-- Enquiries (one per lead conversation thread)
 create table enquiries (
   id uuid primary key default gen_random_uuid(),
   profile_id uuid references profiles(id) on delete cascade not null,
   contact_id uuid references contacts(id) on delete cascade not null,
-  channel text not null default 'email',
   subject text,
-  temperature text not null default 'cold' check (temperature in ('hot', 'warm', 'cold')),
+  channel text not null default 'email',
+  status text not null default 'new'
+    check (status in ('new', 'hot', 'needs_attention', 'auto_handled')),
+  category text
+    check (category in ('price_only', 'inspection', 'multi_question', 'other')),
   property_address text,
   property_price_guide text,
-  property_status text default 'available',
   is_read boolean default false,
   last_activity_at timestamptz default now(),
-  call_brief jsonb,
   created_at timestamptz default now()
 );
 
@@ -59,17 +65,16 @@ create table messages (
   sender text not null check (sender in ('client', 'ai', 'agent')),
   content text not null,
   channel text not null default 'email',
-  status text default 'sent' check (status in ('pending_approval', 'sent', 'edited', 'failed')),
-  metadata jsonb,
+  status text default 'sent'
+    check (status in ('pending_approval', 'sent', 'failed')),
   created_at timestamptz default now()
 );
 
 -- Indexes
 create index idx_enquiries_profile on enquiries(profile_id);
-create index idx_enquiries_temperature on enquiries(temperature);
+create index idx_enquiries_status on enquiries(status);
 create index idx_enquiries_last_activity on enquiries(last_activity_at desc);
 create index idx_messages_enquiry on messages(enquiry_id);
-create index idx_messages_created on messages(created_at);
 create index idx_contacts_profile_email on contacts(profile_id, email);
 
 -- Row Level Security

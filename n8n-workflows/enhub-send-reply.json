@@ -1,0 +1,87 @@
+{
+  "name": "EnHub — Send Reply",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "# Send Reply Workflow\n\nTriggered by the Next.js app when an agent approves a draft.\n\n1. Receives webhook with message_id\n2. Fetches message + enquiry + contact from Supabase\n3. Sends reply via Outlook\n4. Updates message status to 'sent'",
+        "height": 300,
+        "width": 400
+      },
+      "id": "sticky-overview",
+      "name": "Sticky Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [0, 0],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "send-reply",
+        "authentication": "headerAuth",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook — Send Reply",
+      "type": "n8n-nodes-base.webhook",
+      "position": [480, 240],
+      "webhookId": "send-reply",
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "jsCode": "// Fetch message + enquiry + contact from Supabase\nconst messageId = $input.first().json.body.message_id;\nconst supabaseUrl = $env.SUPABASE_URL;\nconst supabaseKey = $env.SUPABASE_SERVICE_ROLE_KEY;\n\nconst headers = {\n  'apikey': supabaseKey,\n  'Authorization': `Bearer ${supabaseKey}`,\n  'Content-Type': 'application/json'\n};\n\n// Fetch message\nlet msgRes = await fetch(\n  `${supabaseUrl}/rest/v1/messages?id=eq.${messageId}&select=*`,\n  { headers }\n);\nlet messages = await msgRes.json();\nif (!messages.length) throw new Error('Message not found');\nconst message = messages[0];\n\n// Fetch enquiry\nlet enqRes = await fetch(\n  `${supabaseUrl}/rest/v1/enquiries?id=eq.${message.enquiry_id}&select=*`,\n  { headers }\n);\nlet enquiry = (await enqRes.json())[0];\n\n// Fetch contact\nlet contactRes = await fetch(\n  `${supabaseUrl}/rest/v1/contacts?id=eq.${enquiry.contact_id}&select=*`,\n  { headers }\n);\nlet contact = (await contactRes.json())[0];\n\nreturn [{\n  json: {\n    messageId,\n    content: message.content,\n    subject: enquiry.subject,\n    contactEmail: contact.email,\n    contactName: contact.name\n  }\n}];"
+      },
+      "id": "fetch-data",
+      "name": "Fetch Message + Enquiry + Contact",
+      "type": "n8n-nodes-base.code",
+      "position": [720, 240],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://graph.microsoft.com/v1.0/me/sendMail",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "microsoftOutlookOAuth2Api",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"message\": {\n    \"subject\": \"Re: {{ $json.subject }}\",\n    \"body\": {\n      \"contentType\": \"HTML\",\n      \"content\": \"{{ $json.content }}\"\n    },\n    \"toRecipients\": [\n      {\n        \"emailAddress\": {\n          \"address\": \"{{ $json.contactEmail }}\",\n          \"name\": \"{{ $json.contactName }}\"\n        }\n      }\n    ]\n  }\n}",
+        "options": {}
+      },
+      "id": "send-email",
+      "name": "Send via Outlook",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [960, 240],
+      "typeVersion": 4.2
+    },
+    {
+      "parameters": {
+        "jsCode": "// Mark message as sent\nconst messageId = $('Fetch Message + Enquiry + Contact').first().json.messageId;\nconst supabaseUrl = $env.SUPABASE_URL;\nconst supabaseKey = $env.SUPABASE_SERVICE_ROLE_KEY;\n\nawait fetch(`${supabaseUrl}/rest/v1/messages?id=eq.${messageId}`, {\n  method: 'PATCH',\n  headers: {\n    'apikey': supabaseKey,\n    'Authorization': `Bearer ${supabaseKey}`,\n    'Content-Type': 'application/json'\n  },\n  body: JSON.stringify({ status: 'sent' })\n});\n\nreturn [{ json: { success: true, messageId } }];"
+      },
+      "id": "mark-sent",
+      "name": "Mark as Sent",
+      "type": "n8n-nodes-base.code",
+      "position": [1200, 240],
+      "typeVersion": 2
+    }
+  ],
+  "connections": {
+    "Webhook — Send Reply": {
+      "main": [[{ "node": "Fetch Message + Enquiry + Contact", "type": "main", "index": 0 }]]
+    },
+    "Fetch Message + Enquiry + Contact": {
+      "main": [[{ "node": "Send via Outlook", "type": "main", "index": 0 }]]
+    },
+    "Send via Outlook": {
+      "main": [[{ "node": "Mark as Sent", "type": "main", "index": 0 }]]
+    }
+  },
+  "pinData": {},
+  "settings": { "executionOrder": "v1" }
+}

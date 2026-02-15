@@ -11,28 +11,38 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  // TODO: Replace with Supabase aggregate queries:
-  // const { count: autoHandled } = await supabase
-  //   .from('messages')
-  //   .select('*', { count: 'exact', head: true })
-  //   .eq('sender', 'ai')
-  //   .eq('status', 'sent');
-  //
-  // const { count: promotedHot } = await supabase
-  //   .from('enquiries')
-  //   .select('*', { count: 'exact', head: true })
-  //   .eq('profile_id', user.id)
-  //   .eq('temperature', 'hot');
-  //
-  // const { count: waitingReply } = await supabase
-  //   .from('messages')
-  //   .select('*', { count: 'exact', head: true })
-  //   .eq('status', 'pending_approval');
+  // Run all count queries in parallel
+  const [autoHandledRes, promotedHotRes, waitingReplyRes] = await Promise.all([
+    supabase
+      .from("messages")
+      .select("*, enquiry:enquiries!inner(profile_id)", {
+        count: "exact",
+        head: true,
+      })
+      .eq("sender", "ai")
+      .eq("status", "sent")
+      .eq("enquiry.profile_id", user.id),
+
+    supabase
+      .from("enquiries")
+      .select("*", { count: "exact", head: true })
+      .eq("profile_id", user.id)
+      .eq("status", "hot"),
+
+    supabase
+      .from("messages")
+      .select("*, enquiry:enquiries!inner(profile_id)", {
+        count: "exact",
+        head: true,
+      })
+      .eq("status", "pending_approval")
+      .eq("enquiry.profile_id", user.id),
+  ]);
 
   const stats = {
-    autoHandled: 24,
-    promotedHot: 3,
-    waitingReply: 7,
+    autoHandled: autoHandledRes.count ?? 0,
+    promotedHot: promotedHotRes.count ?? 0,
+    waitingReply: waitingReplyRes.count ?? 0,
   };
 
   return NextResponse.json(stats);

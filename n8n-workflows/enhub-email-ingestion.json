@@ -1,0 +1,149 @@
+{
+  "name": "EnHub — Email Ingestion & AI Draft",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "# EnHub Email Pipeline\n\n1. Polls inbox for new emails\n2. Cleans HTML → plain text\n3. Finds or creates contact + enquiry in Supabase\n4. Inserts client message\n5. AI drafts a reply (always pending_approval)\n6. Stores draft → appears in inbox for agent review",
+        "height": 400,
+        "width": 400
+      },
+      "id": "sticky-overview",
+      "name": "Sticky Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [0, 0],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [{ "mode": "everyMinute" }]
+        },
+        "output": "raw",
+        "filters": {
+          "hasAttachments": false,
+          "readStatus": "unread"
+        },
+        "options": {
+          "downloadAttachments": false
+        }
+      },
+      "id": "outlook-trigger",
+      "name": "Outlook Trigger",
+      "type": "n8n-nodes-base.microsoftOutlookTrigger",
+      "position": [480, 240],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "loop",
+      "name": "Loop Over Items",
+      "type": "n8n-nodes-base.splitInBatches",
+      "position": [700, 240],
+      "typeVersion": 3
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\n\nreturn items.map(item => {\n  let html = item.json.body?.content || '';\n\n  // Strip HTML tags\n  let text = html\n    .replace(/<style[^>]*>.*?<\\/style>/gis, '')\n    .replace(/<[^>]+>/g, '')\n    .replace(/&nbsp;/g, ' ')\n    .replace(/&amp;/g, '&')\n    .replace(/&[a-z]+;/gi, ' ')\n    .replace(/\\s+/g, ' ')\n    .trim();\n\n  return {\n    json: {\n      ...item.json,\n      cleanBody: text,\n      senderEmail: item.json.from?.emailAddress?.address,\n      senderName: item.json.from?.emailAddress?.name,\n      emailSubject: item.json.subject\n    }\n  };\n});"
+      },
+      "id": "clean-html",
+      "name": "Clean HTML",
+      "type": "n8n-nodes-base.code",
+      "position": [920, 240],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "jsCode": "// Find or create contact + enquiry using Supabase REST API\n// Uses service_role key to bypass RLS\n\nconst item = $input.first().json;\nconst supabaseUrl = $env.SUPABASE_URL;\nconst supabaseKey = $env.SUPABASE_SERVICE_ROLE_KEY;\nconst profileId = $env.ENHUB_PROFILE_ID;\n\nconst headers = {\n  'apikey': supabaseKey,\n  'Authorization': `Bearer ${supabaseKey}`,\n  'Content-Type': 'application/json',\n  'Prefer': 'return=representation'\n};\n\n// 1. Find or create contact\nlet contactRes = await fetch(\n  `${supabaseUrl}/rest/v1/contacts?profile_id=eq.${profileId}&email=eq.${encodeURIComponent(item.senderEmail)}&select=id`,\n  { headers }\n);\nlet contacts = await contactRes.json();\nlet contactId;\n\nif (contacts.length > 0) {\n  contactId = contacts[0].id;\n} else {\n  let insertRes = await fetch(`${supabaseUrl}/rest/v1/contacts`, {\n    method: 'POST',\n    headers: { ...headers, 'Prefer': 'return=representation' },\n    body: JSON.stringify({\n      profile_id: profileId,\n      name: item.senderName,\n      email: item.senderEmail,\n      source: 'Email'\n    })\n  });\n  let inserted = await insertRes.json();\n  contactId = inserted[0].id;\n}\n\n// 2. Find or create enquiry (match by contact + subject)\nlet cleanSubject = (item.emailSubject || '')\n  .replace(/^(Re|Fwd|FW|RE|Fw):\\s*/gi, '')\n  .replace(/^(Re|Fwd|FW|RE|Fw):\\s*/gi, '');\n\nlet enquiryRes = await fetch(\n  `${supabaseUrl}/rest/v1/enquiries?profile_id=eq.${profileId}&contact_id=eq.${contactId}&subject=ilike.${encodeURIComponent(cleanSubject)}&select=id&order=created_at.desc&limit=1`,\n  { headers }\n);\nlet enquiries = await enquiryRes.json();\nlet enquiryId;\n\nif (enquiries.length > 0) {\n  enquiryId = enquiries[0].id;\n  // Bump last_activity\n  await fetch(`${supabaseUrl}/rest/v1/enquiries?id=eq.${enquiryId}`, {\n    method: 'PATCH',\n    headers,\n    body: JSON.stringify({ last_activity_at: new Date().toISOString() })\n  });\n} else {\n  let insertRes = await fetch(`${supabaseUrl}/rest/v1/enquiries`, {\n    method: 'POST',\n    headers: { ...headers, 'Prefer': 'return=representation' },\n    body: JSON.stringify({\n      profile_id: profileId,\n      contact_id: contactId,\n      subject: cleanSubject,\n      channel: 'email',\n      status: 'new'\n    })\n  });\n  let inserted = await insertRes.json();\n  enquiryId = inserted[0].id;\n}\n\n// 3. Insert client message\nawait fetch(`${supabaseUrl}/rest/v1/messages`, {\n  method: 'POST',\n  headers,\n  body: JSON.stringify({\n    enquiry_id: enquiryId,\n    sender: 'client',\n    content: item.cleanBody,\n    channel: 'email',\n    status: 'sent'\n  })\n});\n\nreturn [{\n  json: {\n    ...item,\n    contactId,\n    enquiryId,\n    cleanSubject\n  }\n}];"
+      },
+      "id": "find-create-and-store",
+      "name": "Find/Create Contact & Enquiry + Store Message",
+      "type": "n8n-nodes-base.code",
+      "position": [1140, 240],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=From: {{ $json.senderEmail }}\nName: {{ $json.senderName }}\nSubject: {{ $json.cleanSubject }}\nMessage: {{ $json.cleanBody }}\n",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "You are an email assistant for a real estate agency. Draft a professional reply the agent will review before sending.\n\n# Guidelines\n- Address the sender by first name\n- Be professional but warm\n- If asking about price: include the price guide if mentioned in subject/context\n- If asking about inspection: acknowledge and offer to arrange\n- If you can't confidently answer: draft a general acknowledgment\n- Keep replies concise — 2-3 short paragraphs max\n\n# Output (strict JSON only)\n{\n  \"body\": \"the reply text with <br> for line breaks\",\n  \"category\": \"price_only\" or \"inspection\" or \"multi_question\" or \"other\"\n}\n\n# Rules\n- Output valid JSON only\n- Use <br> for line breaks\n- category must be one of the four values above"
+        }
+      },
+      "id": "ai-draft",
+      "name": "AI Draft Reply",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "position": [1400, 240],
+      "typeVersion": 2.2
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-4o",
+          "cachedResultName": "gpt-4o"
+        },
+        "options": {}
+      },
+      "id": "llm",
+      "name": "GPT-4o",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "position": [1320, 480],
+      "typeVersion": 1.2
+    },
+    {
+      "parameters": {
+        "jsonSchemaExample": "{\n  \"body\": \"reply text here\",\n  \"category\": \"price_only\"\n}"
+      },
+      "id": "output-parser",
+      "name": "JSON Output Parser",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "position": [1500, 480],
+      "typeVersion": 1.3
+    },
+    {
+      "parameters": {
+        "jsCode": "// Store AI draft and update enquiry category\nconst item = $input.first().json;\nconst prev = $('Find/Create Contact & Enquiry + Store Message').first().json;\nconst supabaseUrl = $env.SUPABASE_URL;\nconst supabaseKey = $env.SUPABASE_SERVICE_ROLE_KEY;\n\nconst headers = {\n  'apikey': supabaseKey,\n  'Authorization': `Bearer ${supabaseKey}`,\n  'Content-Type': 'application/json'\n};\n\n// Insert AI draft as pending_approval\nawait fetch(`${supabaseUrl}/rest/v1/messages`, {\n  method: 'POST',\n  headers,\n  body: JSON.stringify({\n    enquiry_id: prev.enquiryId,\n    sender: 'ai',\n    content: item.output.body,\n    channel: 'email',\n    status: 'pending_approval'\n  })\n});\n\n// Update enquiry category if AI detected one\nif (item.output.category) {\n  await fetch(`${supabaseUrl}/rest/v1/enquiries?id=eq.${prev.enquiryId}`, {\n    method: 'PATCH',\n    headers,\n    body: JSON.stringify({ category: item.output.category })\n  });\n}\n\nreturn [{ json: { success: true, enquiryId: prev.enquiryId } }];"
+      },
+      "id": "store-draft",
+      "name": "Store AI Draft",
+      "type": "n8n-nodes-base.code",
+      "position": [1660, 240],
+      "typeVersion": 2
+    }
+  ],
+  "connections": {
+    "Outlook Trigger": {
+      "main": [[{ "node": "Loop Over Items", "type": "main", "index": 0 }]]
+    },
+    "Loop Over Items": {
+      "main": [
+        [],
+        [{ "node": "Clean HTML", "type": "main", "index": 0 }]
+      ]
+    },
+    "Clean HTML": {
+      "main": [[{ "node": "Find/Create Contact & Enquiry + Store Message", "type": "main", "index": 0 }]]
+    },
+    "Find/Create Contact & Enquiry + Store Message": {
+      "main": [[{ "node": "AI Draft Reply", "type": "main", "index": 0 }]]
+    },
+    "GPT-4o": {
+      "ai_languageModel": [[{ "node": "AI Draft Reply", "type": "ai_languageModel", "index": 0 }]]
+    },
+    "JSON Output Parser": {
+      "ai_outputParser": [[{ "node": "AI Draft Reply", "type": "ai_outputParser", "index": 0 }]]
+    },
+    "AI Draft Reply": {
+      "main": [[{ "node": "Store AI Draft", "type": "main", "index": 0 }]]
+    },
+    "Store AI Draft": {
+      "main": [[{ "node": "Loop Over Items", "type": "main", "index": 0 }]]
+    }
+  },
+  "pinData": {},
+  "settings": { "executionOrder": "v1" }
+}

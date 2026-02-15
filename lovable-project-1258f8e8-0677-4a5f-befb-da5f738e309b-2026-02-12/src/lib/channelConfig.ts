@@ -1,30 +1,12 @@
-import { Channel, LeadTemperature } from "@/types/enquiry";
-import {
-  MessageSquare,
-  Mail,
-  Globe,
-  Instagram,
-  Facebook,
-  Home,
-  Phone,
-} from "lucide-react";
+import { EnquiryStatus } from "@/types/enquiry";
+import { Mail } from "lucide-react";
 
-export const channelConfig: Record<
-  Channel,
-  { label: string; icon: typeof Mail; colorClass: string }
-> = {
-  sms: { label: "SMS", icon: Phone, colorClass: "bg-channel-sms" },
-  whatsapp: { label: "WhatsApp", icon: MessageSquare, colorClass: "bg-channel-whatsapp" },
+export const channelConfig = {
   email: { label: "Email", icon: Mail, colorClass: "bg-channel-email" },
-  web: { label: "Web Form", icon: Globe, colorClass: "bg-channel-web" },
-  instagram: { label: "Instagram", icon: Instagram, colorClass: "bg-channel-instagram" },
-  facebook: { label: "Facebook", icon: Facebook, colorClass: "bg-channel-facebook" },
-  rea: { label: "REA", icon: Home, colorClass: "bg-channel-rea" },
-  domain: { label: "Domain", icon: Home, colorClass: "bg-channel-domain" },
 };
 
-export const temperatureConfig: Record<
-  LeadTemperature,
+export const statusConfig: Record<
+  EnquiryStatus,
   { label: string; colorClass: string; bgClass: string; textClass: string }
 > = {
   hot: {
@@ -33,16 +15,22 @@ export const temperatureConfig: Record<
     bgClass: "bg-hot/10",
     textClass: "text-hot",
   },
-  warm: {
-    label: "Warm",
+  needs_attention: {
+    label: "Needs Attention",
     colorClass: "bg-warm",
     bgClass: "bg-warm/10",
     textClass: "text-warm",
   },
-  cold: {
-    label: "Cold",
+  auto_handled: {
+    label: "Auto-handled",
     colorClass: "bg-cold",
     bgClass: "bg-cold/10",
     textClass: "text-cold",
+  },
+  new: {
+    label: "New",
+    colorClass: "bg-primary",
+    bgClass: "bg-primary/10",
+    textClass: "text-primary",
   },
 };

@@ -14,27 +14,34 @@ export async function POST(
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  // TODO: Replace with Supabase update:
-  // const { data, error } = await supabase
-  //   .from('messages')
-  //   .update({ status: 'sent' })
-  //   .eq('id', params.id)
-  //   .eq('status', 'pending_approval')
-  //   .select()
-  //   .single();
-  //
-  // TODO: Call n8n webhook to send the reply:
-  // await fetch(`${process.env.N8N_WEBHOOK_URL}/send-reply`, {
-  //   method: 'POST',
-  //   headers: { 'Content-Type': 'application/json' },
-  //   body: JSON.stringify({ message_id: params.id }),
-  // });
+  const { data, error } = await supabase
+    .from("messages")
+    .update({ status: "sent" })
+    .eq("id", params.id)
+    .eq("status", "pending_approval")
+    .select()
+    .single();
 
-  const mockApproved = {
-    id: params.id,
-    status: "sent" as const,
-    approved_at: new Date(),
-  };
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
 
-  return NextResponse.json(mockApproved);
+  // Trigger n8n webhook to send the reply via SMTP
+  if (process.env.N8N_WEBHOOK_URL) {
+    try {
+      await fetch(`${process.env.N8N_WEBHOOK_URL}/send-reply`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${process.env.N8N_WEBHOOK_SECRET}`,
+        },
+        body: JSON.stringify({ message_id: params.id }),
+      });
+    } catch {
+      // Don't fail the approval if n8n is unreachable
+      console.error("Failed to trigger n8n send-reply webhook");
+    }
+  }
+
+  return NextResponse.json(data);
 }

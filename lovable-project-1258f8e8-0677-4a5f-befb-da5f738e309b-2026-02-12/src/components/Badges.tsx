@@ -1,11 +1,11 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { Channel, LeadTemperature } from "@/types/enquiry";
-import { channelConfig, temperatureConfig } from "@/lib/channelConfig";
+import { EnquiryStatus } from "@/types/enquiry";
+import { channelConfig, statusConfig } from "@/lib/channelConfig";
 
 interface ChannelBadgeProps {
-  channel: Channel;
+  channel: "email";
   className?: string;
 }
 
@@ -26,13 +26,13 @@ export function ChannelBadge({ channel, className }: ChannelBadgeProps) {
   );
 }
 
-interface TemperatureBadgeProps {
-  temperature: LeadTemperature;
+interface StatusBadgeProps {
+  status: EnquiryStatus;
   className?: string;
 }
 
-export function TemperatureBadge({ temperature, className }: TemperatureBadgeProps) {
-  const config = temperatureConfig[temperature];
+export function StatusBadge({ status, className }: StatusBadgeProps) {
+  const config = statusConfig[status];
   return (
     <span
       className={cn(
@@ -46,7 +46,7 @@ export function TemperatureBadge({ temperature, className }: TemperatureBadgePro
         className={cn(
           "h-1.5 w-1.5 rounded-full",
           config.colorClass,
-          temperature === "hot" && "animate-pulse"
+          status === "hot" && "animate-pulse"
         )}
       />
       {config.label}

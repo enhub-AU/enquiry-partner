@@ -1,8 +1,6 @@
 "use client";
 
 import { Enquiry, Message } from "@/types/enquiry";
-import { CallBriefPanel } from "./CallBriefPanel";
-import { PropertyCard } from "./PropertyCard";
 import { channelConfig } from "@/lib/channelConfig";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
@@ -14,14 +12,13 @@ import {
   Clock,
   Send,
   Sparkles,
-  User,
   MapPin,
   Flame,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useState, useEffect } from "react";
 
-/* ── live elapsed timer ── */
+/* -- live elapsed timer -- */
 function useElapsed(since: Date) {
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
@@ -50,9 +47,9 @@ interface EnquiryDetailProps {
   enquiry: Enquiry;
 }
 
-/* ── Status badge for right panel ── */
-function StatusBadge({ enquiry }: { enquiry: Enquiry }) {
-  if (enquiry.temperature === "hot") {
+/* -- Status badge for right panel -- */
+function EnquiryStatusBadge({ enquiry }: { enquiry: Enquiry }) {
+  if (enquiry.status === "hot") {
     return (
       <span className="inline-flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1 rounded-full bg-[hsl(var(--hot)/0.1)] text-[hsl(var(--hot))]">
         <span className="h-1.5 w-1.5 rounded-full bg-[hsl(var(--hot))] animate-pulse" />
@@ -60,23 +57,23 @@ function StatusBadge({ enquiry }: { enquiry: Enquiry }) {
       </span>
     );
   }
-  if (enquiry.temperature === "warm") {
+  if (enquiry.status === "needs_attention") {
     return (
       <span className="inline-flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1 rounded-full bg-[hsl(var(--warm)/0.1)] text-[hsl(var(--warm))]">
         <span className="h-1.5 w-1.5 rounded-full bg-[hsl(var(--warm))]" />
-        AI working
+        Needs Attention
       </span>
     );
   }
   return (
     <span className="inline-flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1 rounded-full bg-muted text-muted-foreground">
       <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/30" />
-      Handled
+      {enquiry.status === "new" ? "New" : "Auto-handled"}
     </span>
   );
 }
 
-/* ── Message bubble ── */
+/* -- Message bubble -- */
 function MessageBubble({ message }: { message: Message }) {
   const isClient = message.sender === "client";
   const isAI = message.sender === "ai";
@@ -136,7 +133,7 @@ export function EnquiryDetail({ enquiry }: EnquiryDetailProps) {
 
   return (
     <div className="flex h-full">
-      {/* ── CENTER: Conversation thread ── */}
+      {/* -- CENTER: Conversation thread -- */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Thread header */}
         <div className="flex-shrink-0 px-6 py-4 border-b border-border/30">
@@ -149,7 +146,7 @@ export function EnquiryDetail({ enquiry }: EnquiryDetailProps) {
                 {enquiry.subject}
               </p>
             </div>
-            {enquiry.temperature === "hot" && enquiry.clientPhone && (
+            {enquiry.status === "hot" && enquiry.clientPhone && (
               <a
                 href={`tel:${enquiry.clientPhone.replace(/\s/g, "")}`}
                 className="inline-flex items-center gap-2 text-[13px] font-bold font-mono tracking-tight text-foreground transition-opacity duration-150 hover:opacity-70"
@@ -162,14 +159,11 @@ export function EnquiryDetail({ enquiry }: EnquiryDetailProps) {
         </div>
 
         {/* Hot lead banner */}
-        {enquiry.temperature === "hot" && enquiry.callBrief?.whyHot?.[0] && (
+        {enquiry.status === "hot" && (
           <div className="flex-shrink-0 px-6 py-2.5 bg-[hsl(var(--hot)/0.06)] border-b border-[hsl(var(--hot)/0.1)] flex items-center gap-3">
             <Flame className="h-3.5 w-3.5 text-[hsl(var(--hot))] flex-shrink-0" />
-            <span className="text-[12px] text-[hsl(var(--hot)/0.9)] font-semibold whitespace-nowrap">
-              Why this is hot
-            </span>
-            <span className="text-[11px] text-muted-foreground/60">
-              {enquiry.callBrief.whyHot[0].evidence}
+            <span className="text-[12px] text-[hsl(var(--hot)/0.9)] font-semibold">
+              Hot lead — call recommended
             </span>
           </div>
         )}
@@ -188,7 +182,11 @@ export function EnquiryDetail({ enquiry }: EnquiryDetailProps) {
             <span className="text-[12px] text-muted-foreground/60 flex-1">
               AI draft ready for review
             </span>
-            <Button variant="outline" size="sm" className="h-8 gap-1.5 text-[12px]">
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 gap-1.5 text-[12px]"
+            >
               <Edit3 className="h-3 w-3" />
               Edit
             </Button>
@@ -220,26 +218,32 @@ export function EnquiryDetail({ enquiry }: EnquiryDetailProps) {
         )}
       </div>
 
-      {/* ── RIGHT: Context panel ── */}
+      {/* -- RIGHT: Context panel -- */}
       <div className="hidden lg:flex flex-col w-[280px] border-l border-border/30 overflow-y-auto bg-card/20">
         <div className="p-5 space-y-4">
           {/* Timer */}
           <div className="flex items-center justify-between pb-3 border-b border-border/15">
-            <span className="text-[10px] font-medium tracking-[0.15em] uppercase text-muted-foreground/35">Enquiry age</span>
+            <span className="text-[10px] font-medium tracking-[0.15em] uppercase text-muted-foreground/35">
+              Enquiry age
+            </span>
             <LiveTimer since={enquiry.lastActivity} />
           </div>
 
-          {/* Contact card — compact */}
+          {/* Contact card */}
           <div className="flex items-center gap-3 pb-4 border-b border-border/15">
             <div className="h-10 w-10 rounded-full bg-muted flex items-center justify-center text-[11px] font-semibold text-muted-foreground flex-shrink-0">
-              {enquiry.clientName.split(" ").map((n) => n[0]).slice(0, 2).join("")}
+              {enquiry.clientName
+                .split(" ")
+                .map((n) => n[0])
+                .slice(0, 2)
+                .join("")}
             </div>
             <div className="min-w-0">
               <h3 className="text-[13px] font-semibold text-foreground truncate">
                 {enquiry.clientName}
               </h3>
               <div className="flex items-center gap-2 mt-0.5">
-                <StatusBadge enquiry={enquiry} />
+                <EnquiryStatusBadge enquiry={enquiry} />
                 <span className="flex items-center gap-1 text-[10px] text-muted-foreground/35">
                   <ChannelIcon className="h-2.5 w-2.5" />
                   {channelConfig[enquiry.channel].label}
@@ -248,7 +252,7 @@ export function EnquiryDetail({ enquiry }: EnquiryDetailProps) {
             </div>
           </div>
 
-          {/* Contact links — icon row */}
+          {/* Contact links */}
           <div className="flex gap-2 pb-4 border-b border-border/15">
             {enquiry.clientPhone && (
               <a
@@ -269,49 +273,25 @@ export function EnquiryDetail({ enquiry }: EnquiryDetailProps) {
             )}
           </div>
 
-          {/* Signals — compact pills */}
-          {enquiry.callBrief && (
+          {/* Property */}
+          {enquiry.propertyAddress && (
             <div className="pb-4 border-b border-border/15">
-              <div className="flex flex-wrap gap-1.5">
-                <span className="inline-flex items-center text-[10px] px-2.5 py-1 rounded-md bg-muted/40 text-foreground/70 capitalize">
-                  {enquiry.callBrief.intent}
-                </span>
-                {enquiry.callBrief.budgetRange && (
-                  <span className="inline-flex items-center text-[10px] px-2.5 py-1 rounded-md bg-muted/40 text-foreground/70 truncate max-w-[200px]">
-                    {enquiry.callBrief.budgetRange}
-                  </span>
-                )}
-                {enquiry.callBrief.timeframe && (
-                  <span className="inline-flex items-center text-[10px] px-2.5 py-1 rounded-md bg-muted/40 text-foreground/70 truncate max-w-[200px]">
-                    {enquiry.callBrief.timeframe}
-                  </span>
-                )}
+              <p className="text-[10px] font-medium tracking-[0.15em] uppercase text-muted-foreground/35 mb-2">
+                Property
+              </p>
+              <div className="flex items-start gap-2">
+                <MapPin className="h-3.5 w-3.5 text-muted-foreground/40 mt-0.5 flex-shrink-0" />
+                <div>
+                  <p className="text-[12px] font-medium text-foreground leading-snug">
+                    {enquiry.propertyAddress}
+                  </p>
+                  {enquiry.propertyPriceGuide && (
+                    <p className="text-[12px] text-primary font-semibold mt-0.5">
+                      {enquiry.propertyPriceGuide}
+                    </p>
+                  )}
+                </div>
               </div>
-            </div>
-          )}
-
-          {/* Property — inline */}
-          <div className="pb-4 border-b border-border/15">
-            <p className="text-[10px] font-medium tracking-[0.15em] uppercase text-muted-foreground/35 mb-2">Property</p>
-            <p className="text-[12px] font-medium text-foreground leading-snug">{enquiry.property.address}</p>
-            <p className="text-[12px] text-primary font-semibold mt-0.5">{enquiry.property.priceGuide}</p>
-            <div className="flex items-center gap-3 mt-1.5 text-[10px] text-muted-foreground/40">
-              {enquiry.property.bedrooms && <span>{enquiry.property.bedrooms} bed</span>}
-              {enquiry.property.bathrooms && <span>{enquiry.property.bathrooms} bath</span>}
-              {enquiry.property.parking && <span>{enquiry.property.parking} car</span>}
-            </div>
-          </div>
-
-          {/* Call brief — simplified for hot leads */}
-          {enquiry.callBrief && (
-            <div>
-              <p className="text-[10px] font-medium tracking-[0.15em] uppercase text-muted-foreground/35 mb-2.5">Call brief</p>
-              <p className="text-[12px] text-foreground/70 leading-relaxed italic mb-3">
-                "{enquiry.callBrief.suggestedOpening}"
-              </p>
-              <p className="text-[11px] text-muted-foreground/50 leading-relaxed">
-                {enquiry.callBrief.strategyAngle}
-              </p>
             </div>
           )}
         </div>

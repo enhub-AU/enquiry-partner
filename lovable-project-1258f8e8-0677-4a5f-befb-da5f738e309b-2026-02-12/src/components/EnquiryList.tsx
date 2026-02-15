@@ -6,7 +6,7 @@ import { channelConfig } from "@/lib/channelConfig";
 import { cn } from "@/lib/utils";
 import type { SortMode } from "@/types/enquiry";
 
-/* ── live elapsed timer ── */
+/* -- live elapsed timer -- */
 function useElapsed(since: Date) {
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
@@ -46,13 +46,16 @@ const sortLabels: Record<SortMode, string> = {
 };
 
 function getStatusIndicator(enquiry: Enquiry) {
-  if (enquiry.temperature === "hot") {
+  if (enquiry.status === "hot") {
     return { dot: "bg-[hsl(var(--hot))]", label: "Hot" };
   }
-  if (enquiry.temperature === "warm") {
-    return { dot: "bg-[hsl(var(--warm))]", label: "AI working" };
+  if (enquiry.status === "needs_attention") {
+    return { dot: "bg-[hsl(var(--warm))]", label: "Needs Attention" };
   }
-  return { dot: "bg-muted-foreground/20", label: "Handled" };
+  if (enquiry.status === "new") {
+    return { dot: "bg-primary", label: "New" };
+  }
+  return { dot: "bg-muted-foreground/20", label: "Auto-handled" };
 }
 
 function getInitials(name: string) {
@@ -102,10 +105,9 @@ export function EnquiryList({
       <div className="flex-1 overflow-y-auto">
         {enquiries.map((enquiry) => {
           const isSelected = selectedId === enquiry.id;
-          const status = getStatusIndicator(enquiry);
+          const indicator = getStatusIndicator(enquiry);
           const ChannelIcon = channelConfig[enquiry.channel].icon;
           const lastMsg = enquiry.messages[enquiry.messages.length - 1];
-          
 
           return (
             <button
@@ -113,9 +115,7 @@ export function EnquiryList({
               onClick={() => onSelect(enquiry.id)}
               className={cn(
                 "w-full text-left px-5 py-3.5 transition-colors duration-100 border-b border-border/20",
-                isSelected
-                  ? "bg-accent/60"
-                  : "hover:bg-accent/30"
+                isSelected ? "bg-accent/60" : "hover:bg-accent/30"
               )}
             >
               <div className="flex gap-3">
@@ -135,10 +135,10 @@ export function EnquiryList({
                   <span
                     className={cn(
                       "absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-card",
-                      status.dot,
-                      enquiry.temperature === "hot" && "animate-pulse"
+                      indicator.dot,
+                      enquiry.status === "hot" && "animate-pulse"
                     )}
-                    title={status.label}
+                    title={indicator.label}
                   />
                 </div>
 
@@ -148,7 +148,9 @@ export function EnquiryList({
                     <span
                       className={cn(
                         "text-[13px] truncate",
-                        !enquiry.isRead ? "font-semibold text-foreground" : "font-medium text-foreground/80"
+                        !enquiry.isRead
+                          ? "font-semibold text-foreground"
+                          : "font-medium text-foreground/80"
                       )}
                     >
                       {enquiry.clientName}
@@ -164,7 +166,7 @@ export function EnquiryList({
                   <div className="flex items-center gap-2 mt-1.5">
                     <ChannelIcon className="h-3 w-3 text-muted-foreground/30" />
                     <span className="text-[10px] text-muted-foreground/35">
-                      {status.label}
+                      {indicator.label}
                     </span>
                   </div>
                 </div>

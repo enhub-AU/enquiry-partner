@@ -39,15 +39,18 @@ function InboxContent() {
     const list = [...filtered];
     switch (sortMode) {
       case "hot": {
-        const order = { hot: 0, warm: 1, cold: 2 };
+        const order = { hot: 0, needs_attention: 1, new: 2, auto_handled: 3 };
         return list.sort((a, b) => {
-          if (order[a.temperature] !== order[b.temperature])
-            return order[a.temperature] - order[b.temperature];
+          const aOrder = order[a.status] ?? 3;
+          const bOrder = order[b.status] ?? 3;
+          if (aOrder !== bOrder) return aOrder - bOrder;
           return b.lastActivity.getTime() - a.lastActivity.getTime();
         });
       }
       case "newest":
-        return list.sort((a, b) => b.lastActivity.getTime() - a.lastActivity.getTime());
+        return list.sort(
+          (a, b) => b.lastActivity.getTime() - a.lastActivity.getTime()
+        );
       case "open":
         return list.sort((a, b) => {
           if (a.isRead !== b.isRead) return a.isRead ? 1 : -1;
@@ -65,7 +68,7 @@ function InboxContent() {
       <AppSidebar />
 
       <div className="flex flex-col flex-1 overflow-hidden">
-        {/* ── Global search bar ── */}
+        {/* Global search bar */}
         <div className="flex-shrink-0 px-5 py-3 border-b border-border/40 bg-card/50 backdrop-blur-sm">
           <div className="relative max-w-md">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/40" />
@@ -79,7 +82,7 @@ function InboxContent() {
           </div>
         </div>
 
-        {/* ── Three-column content ── */}
+        {/* Three-column content */}
         <div className="flex flex-1 overflow-hidden">
           {/* LEFT — Conversation list */}
           <div className="w-[320px] min-w-[280px] border-r border-border/40 flex-shrink-0 overflow-hidden bg-card/30">
@@ -100,7 +103,9 @@ function InboxContent() {
               <div className="flex items-center justify-center h-full text-muted-foreground">
                 <div className="text-center">
                   <Inbox className="h-10 w-10 mx-auto mb-3 opacity-20" />
-                  <p className="text-sm text-muted-foreground/50">Select a conversation</p>
+                  <p className="text-sm text-muted-foreground/50">
+                    Select a conversation
+                  </p>
                 </div>
               </div>
             )}

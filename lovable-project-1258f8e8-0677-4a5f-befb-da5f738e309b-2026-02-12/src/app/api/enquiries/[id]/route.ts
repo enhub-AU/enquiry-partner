@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { mockEnquiries } from "@/data/mockEnquiries";
 
 export async function GET(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   const supabase = createClient();
@@ -15,19 +14,53 @@ export async function GET(
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  // TODO: Replace with Supabase query:
-  // const { data, error } = await supabase
-  //   .from('enquiries')
-  //   .select('*, contact:contacts(*), messages(*)')
-  //   .eq('id', params.id)
-  //   .eq('profile_id', user.id)
-  //   .single();
+  const { data, error } = await supabase
+    .from("enquiries")
+    .select("*, contact:contacts(*), messages(*)")
+    .eq("id", params.id)
+    .eq("profile_id", user.id)
+    .single();
 
-  const enquiry = mockEnquiries.find((e) => e.id === params.id);
-
-  if (!enquiry) {
+  if (error || !data) {
     return NextResponse.json({ error: "Enquiry not found" }, { status: 404 });
   }
+
+  const enquiry = {
+    id: data.id,
+    clientName: data.contact?.name ?? "Unknown",
+    clientEmail: data.contact?.email,
+    clientPhone: data.contact?.phone,
+    channel: data.channel,
+    subject: data.subject ?? "",
+    status: data.status,
+    category: data.category,
+    propertyAddress: data.property_address,
+    propertyPriceGuide: data.property_price_guide,
+    messages: (data.messages ?? [])
+      .sort(
+        (a: { created_at: string }, b: { created_at: string }) =>
+          new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+      )
+      .map(
+        (m: {
+          id: string;
+          sender: string;
+          content: string;
+          created_at: string;
+          channel: string;
+          status: string;
+        }) => ({
+          id: m.id,
+          sender: m.sender,
+          content: m.content,
+          timestamp: m.created_at,
+          channel: m.channel,
+          status: m.status,
+        })
+      ),
+    lastActivity: data.last_activity_at,
+    isRead: data.is_read,
+  };
 
   return NextResponse.json(enquiry);
 }

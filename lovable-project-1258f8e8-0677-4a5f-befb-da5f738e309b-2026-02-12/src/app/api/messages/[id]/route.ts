@@ -24,20 +24,16 @@ export async function PUT(
     );
   }
 
-  // TODO: Replace with Supabase update:
-  // const { data, error } = await supabase
-  //   .from('messages')
-  //   .update({ content, status: 'edited' })
-  //   .eq('id', params.id)
-  //   .select()
-  //   .single();
+  const { data, error } = await supabase
+    .from("messages")
+    .update({ content })
+    .eq("id", params.id)
+    .select()
+    .single();
 
-  const mockUpdated = {
-    id: params.id,
-    content,
-    status: "edited" as const,
-    updated_at: new Date(),
-  };
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
 
-  return NextResponse.json(mockUpdated);
+  return NextResponse.json(data);
 }

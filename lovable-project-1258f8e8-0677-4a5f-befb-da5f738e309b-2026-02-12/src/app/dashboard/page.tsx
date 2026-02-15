@@ -4,11 +4,11 @@ import { useState, useEffect } from "react";
 import { AppSidebar } from "@/components/AppSidebar";
 import { mockEnquiries } from "@/data/mockEnquiries";
 import { channelConfig } from "@/lib/channelConfig";
-import { Phone, ArrowUpRight, ChevronRight, ArrowUp } from "lucide-react";
+import { Phone, ChevronRight, ArrowUp } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 
-/* ── count-up hook ── */
+/* -- count-up hook -- */
 function useCountUp(target: number, duration = 1800) {
   const [value, setValue] = useState(0);
   useEffect(() => {
@@ -24,7 +24,7 @@ function useCountUp(target: number, duration = 1800) {
   return value;
 }
 
-/* ── live elapsed timer ── */
+/* -- live elapsed timer -- */
 function useElapsed(since: Date) {
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
@@ -49,7 +49,7 @@ function LiveTimer({ since }: { since: Date }) {
   );
 }
 
-/* ── greeting ── */
+/* -- greeting -- */
 function getGreeting() {
   const h = new Date().getHours();
   if (h < 12) return "Good morning";
@@ -57,18 +57,26 @@ function getGreeting() {
   return "Good evening";
 }
 
-/* ── animation variants ── */
+/* -- animation variants -- */
 const containerVariants = {
   hidden: { opacity: 0 },
   visible: {
     opacity: 1,
-    transition: { duration: 0.8, ease: [0.22, 1, 0.36, 1], staggerChildren: 0.12 },
+    transition: {
+      duration: 0.8,
+      ease: [0.22, 1, 0.36, 1],
+      staggerChildren: 0.12,
+    },
   },
 };
 
 const itemVariants = {
   hidden: { opacity: 0, y: 30 },
-  visible: { opacity: 1, y: 0, transition: { duration: 0.7, ease: [0.22, 1, 0.36, 1] } },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.7, ease: [0.22, 1, 0.36, 1] },
+  },
 };
 
 const cardHover = {
@@ -80,14 +88,17 @@ export default function DashboardPage() {
   const router = useRouter();
 
   const hotLeads = mockEnquiries
-    .filter((e) => e.temperature === "hot")
+    .filter((e) => e.status === "hot")
     .sort((a, b) => a.lastActivity.getTime() - b.lastActivity.getTime())
     .slice(0, 5);
 
   const stats = {
-    autoHandled: 38,
+    autoHandled: mockEnquiries.filter((e) => e.status === "auto_handled")
+      .length,
     promotedHot: hotLeads.length,
-    waitingReply: 12,
+    waitingReply: mockEnquiries.filter((e) =>
+      e.messages.some((m) => m.status === "pending_approval")
+    ).length,
   };
 
   const handledCount = useCountUp(stats.autoHandled, 2000);
@@ -107,7 +118,7 @@ export default function DashboardPage() {
           initial="hidden"
           animate="visible"
         >
-          {/* ── GREETING ── */}
+          {/* GREETING */}
           <motion.div variants={itemVariants} className="mb-16">
             <p className="text-muted-foreground text-[15px] font-medium mb-3">
               {getGreeting()}
@@ -119,8 +130,11 @@ export default function DashboardPage() {
             </h1>
           </motion.div>
 
-          {/* ── STATS ROW ── */}
-          <motion.div variants={itemVariants} className="grid grid-cols-3 gap-4 mb-16">
+          {/* STATS ROW */}
+          <motion.div
+            variants={itemVariants}
+            className="grid grid-cols-3 gap-4 mb-16"
+          >
             {[
               { label: "Auto-handled", value: handledCount, accent: true },
               { label: "Promoted", value: promotedCount, accent: true },
@@ -130,33 +144,55 @@ export default function DashboardPage() {
                 key={stat.label}
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
-                transition={{ delay: 0.5 + i * 0.1, duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
+                transition={{
+                  delay: 0.5 + i * 0.1,
+                  duration: 0.6,
+                  ease: [0.22, 1, 0.36, 1],
+                }}
                 className="relative overflow-hidden rounded-2xl bg-card border border-border/50 p-5 group"
               >
                 <div className="flex items-center gap-2.5">
-                  <p className={`text-[36px] font-extrabold tracking-[-0.03em] leading-none ${stat.accent ? "text-gradient-brand" : "text-foreground"}`}>
+                  <p
+                    className={`text-[36px] font-extrabold tracking-[-0.03em] leading-none ${
+                      stat.accent ? "text-gradient-brand" : "text-foreground"
+                    }`}
+                  >
                     {stat.value}
                   </p>
                   {stat.accent && (
                     <motion.div
                       initial={{ opacity: 0, y: 6 }}
                       animate={{ opacity: 1, y: [6, -2, 0] }}
-                      transition={{ delay: 1.2 + i * 0.15, duration: 0.6, ease: [0.34, 1.56, 0.64, 1] }}
+                      transition={{
+                        delay: 1.2 + i * 0.15,
+                        duration: 0.6,
+                        ease: [0.34, 1.56, 0.64, 1],
+                      }}
                       className="relative"
                     >
                       <div className="h-5 w-5 rounded-md bg-[hsl(var(--channel-sms)/0.12)] flex items-center justify-center">
                         <motion.div
                           animate={{ y: [0, -1, 0] }}
-                          transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+                          transition={{
+                            duration: 2,
+                            repeat: Infinity,
+                            ease: "easeInOut",
+                          }}
                         >
                           <ArrowUp className="h-2.5 w-2.5 text-[hsl(var(--channel-sms))]" />
                         </motion.div>
                       </div>
-                      {/* Glow ring */}
                       <motion.div
                         className="absolute inset-0 rounded-md bg-[hsl(var(--channel-sms)/0.08)]"
-                        animate={{ scale: [1, 1.5, 1], opacity: [0.5, 0, 0.5] }}
-                        transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
+                        animate={{
+                          scale: [1, 1.5, 1],
+                          opacity: [0.5, 0, 0.5],
+                        }}
+                        transition={{
+                          duration: 3,
+                          repeat: Infinity,
+                          ease: "easeInOut",
+                        }}
                       />
                     </motion.div>
                   )}
@@ -171,7 +207,7 @@ export default function DashboardPage() {
             ))}
           </motion.div>
 
-          {/* ── PRIORITY QUEUE ── */}
+          {/* PRIORITY QUEUE */}
           <motion.div variants={itemVariants}>
             <div className="flex items-center justify-between mb-6">
               <div className="flex items-center gap-3">
@@ -181,7 +217,8 @@ export default function DashboardPage() {
                 </h2>
               </div>
               <span className="text-[12px] text-muted-foreground/60 font-medium">
-                {hotLeads.length} {hotLeads.length === 1 ? "lead" : "leads"} ready
+                {hotLeads.length} {hotLeads.length === 1 ? "lead" : "leads"}{" "}
+                ready
               </span>
             </div>
 
@@ -195,14 +232,17 @@ export default function DashboardPage() {
               <div className="space-y-2">
                 {hotLeads.map((lead, i) => {
                   const ChannelIcon = channelConfig[lead.channel].icon;
-                  const hotSignal = lead.callBrief?.whyHot?.[0];
 
                   return (
                     <motion.div
                       key={lead.id}
                       initial={{ opacity: 0, y: 20 }}
                       animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: 0.7 + i * 0.08, duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+                      transition={{
+                        delay: 0.7 + i * 0.08,
+                        duration: 0.5,
+                        ease: [0.22, 1, 0.36, 1],
+                      }}
                       whileHover={cardHover}
                       onClick={() => router.push(`/inbox?id=${lead.id}`)}
                       className="group relative flex items-center gap-5 rounded-2xl bg-card border border-border/40 p-5 cursor-pointer transition-all duration-300 hover:border-primary/25 hover:shadow-[0_8px_30px_-8px_hsl(36,80%,50%,0.12)]"
@@ -227,16 +267,9 @@ export default function DashboardPage() {
                           </span>
                           <LiveTimer since={lead.lastActivity} />
                         </div>
-                        {hotSignal && (
-                          <p className="text-[13px] text-muted-foreground leading-relaxed line-clamp-1">
-                            {hotSignal.signal}
-                          </p>
-                        )}
-                        {!hotSignal && (
-                          <p className="text-[13px] text-muted-foreground leading-relaxed line-clamp-1">
-                            {lead.subject}
-                          </p>
-                        )}
+                        <p className="text-[13px] text-muted-foreground leading-relaxed line-clamp-1">
+                          {lead.subject}
+                        </p>
                       </div>
 
                       {/* Phone + arrow */}
@@ -258,16 +291,12 @@ export default function DashboardPage() {
             )}
           </motion.div>
 
-          {/* ── QUIET FOOTER ── */}
-          <motion.div
-            variants={itemVariants}
-            className="mt-20 text-center"
-          >
+          {/* QUIET FOOTER */}
+          <motion.div variants={itemVariants} className="mt-20 text-center">
             <p className="text-[12px] text-muted-foreground/40 font-medium tracking-wide">
               Everything else is handled quietly in the background.
             </p>
           </motion.div>
-
         </motion.div>
       </main>
     </div>

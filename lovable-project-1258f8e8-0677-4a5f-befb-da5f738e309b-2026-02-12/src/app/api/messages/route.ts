@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { mockEnquiries } from "@/data/mockEnquiries";
 
 export async function GET(request: NextRequest) {
   const supabase = createClient();
@@ -21,15 +20,24 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  // TODO: Replace with Supabase query:
-  // const { data, error } = await supabase
-  //   .from('messages')
-  //   .select('*')
-  //   .eq('enquiry_id', enquiryId)
-  //   .order('created_at');
+  const { data, error } = await supabase
+    .from("messages")
+    .select("*")
+    .eq("enquiry_id", enquiryId)
+    .order("created_at");
 
-  const enquiry = mockEnquiries.find((e) => e.id === enquiryId);
-  const messages = enquiry?.messages ?? [];
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  const messages = (data ?? []).map((m) => ({
+    id: m.id,
+    sender: m.sender,
+    content: m.content,
+    timestamp: m.created_at,
+    channel: m.channel,
+    status: m.status,
+  }));
 
   return NextResponse.json(messages);
 }
@@ -54,22 +62,27 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // TODO: Replace with Supabase insert:
-  // const { data, error } = await supabase
-  //   .from('messages')
-  //   .insert({ enquiry_id, content, sender: 'agent', status: 'sent' })
-  //   .select()
-  //   .single();
-  // TODO: Trigger n8n webhook to send via SMTP
+  const { data, error } = await supabase
+    .from("messages")
+    .insert({
+      enquiry_id,
+      content,
+      sender: "agent",
+      channel: "email",
+      status: "sent",
+    })
+    .select()
+    .single();
 
-  const mockMessage = {
-    id: crypto.randomUUID(),
-    enquiry_id,
-    content,
-    sender: "agent" as const,
-    status: "sent" as const,
-    timestamp: new Date(),
-  };
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
 
-  return NextResponse.json(mockMessage, { status: 201 });
+  // Update enquiry last_activity
+  await supabase
+    .from("enquiries")
+    .update({ last_activity_at: new Date().toISOString() })
+    .eq("id", enquiry_id);
+
+  return NextResponse.json(data, { status: 201 });
 }

@@ -5,7 +5,7 @@ import { useQueryClient } from "@tanstack/react-query";
  * Supabase Realtime subscription for inbox updates.
  * Subscribes to:
  * - `messages` table inserts (new messages for user's enquiries)
- * - `enquiries` table updates (temperature changes, new activity)
+ * - `enquiries` table updates (status changes, new activity)
  *
  * TODO: Uncomment the subscription logic once Supabase is connected.
  */
