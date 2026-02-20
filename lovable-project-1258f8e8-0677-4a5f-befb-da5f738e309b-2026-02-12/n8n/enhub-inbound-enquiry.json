@@ -1,0 +1,180 @@
+{
+  "name": "EnHub — Inbound Enquiry",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "filters": {
+          "readStatus": "unread",
+          "receivedAfter": "={{ $now.minus(1, 'day').toISO() }}"
+        },
+        "options": {
+          "downloadAttachments": false
+        }
+      },
+      "id": "gmail-trigger",
+      "name": "Gmail Trigger",
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1.2,
+      "position": [220, 300],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REPLACE_WITH_YOUR_GMAIL_CREDENTIAL_ID",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": "gpt-4o-mini",
+        "options": {},
+        "messages": {
+          "values": [
+            {
+              "role": "system",
+              "content": "You are a real estate email parser. Given an incoming email, extract structured data.\n\nReturn ONLY valid JSON with these fields:\n{\n  \"client_name\": \"Full name of the sender\",\n  \"client_email\": \"sender email\",\n  \"client_phone\": \"phone if found, or null\",\n  \"subject\": \"email subject line\",\n  \"body\": \"the main message body, cleaned up\",\n  \"category\": \"one of: price_only, inspection, multi_question, other\",\n  \"property_address\": \"property address if mentioned, or null\",\n  \"source\": \"REA if from realestate.com.au, Domain if from domain.com.au, otherwise Email\",\n  \"is_inspection_request\": true/false,\n  \"is_offer_intent\": true/false\n}\n\nCategory rules:\n- price_only: Only asking about price/price guide\n- inspection: Requesting or mentioning inspection/viewing\n- multi_question: 2+ distinct questions\n- other: Everything else (offers, general interest, etc.)\n\nIf you can't determine a field, use null."
+            },
+            {
+              "role": "user",
+              "content": "=From: {{ $json.from }}\nSubject: {{ $json.subject }}\n\nBody:\n{{ $json.snippet || $json.textPlain || $json.text }}"
+            }
+          ]
+        },
+        "jsonOutput": true
+      },
+      "id": "ai-parse-email",
+      "name": "AI Parse Email",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [460, 300],
+      "credentials": {
+        "openAiApi": {
+          "id": "REPLACE_WITH_YOUR_OPENAI_CREDENTIAL_ID",
+          "name": "OpenAI account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse the AI response\nconst aiOutput = JSON.parse($input.first().json.text || $input.first().json.message?.content || '{}');\n\nreturn [{ json: aiOutput }];"
+      },
+      "id": "parse-ai-response",
+      "name": "Parse AI Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [700, 300]
+    },
+    {
+      "parameters": {
+        "model": "gpt-4o-mini",
+        "options": {},
+        "messages": {
+          "values": [
+            {
+              "role": "system",
+              "content": "You are an AI assistant for a real estate agent. Write a professional, warm reply to the enquiry below.\n\nRules:\n- Keep it under 100 words\n- Be friendly but professional\n- If they asked about price, include the price guide if available\n- If they asked about inspection, offer to arrange one\n- Sign off with the agent's name (use \"the team\" as placeholder)\n- Do NOT make up information — only reference what's in the email\n- Australian English spelling"
+            },
+            {
+              "role": "user",
+              "content": "=Client: {{ $json.client_name }}\nSubject: {{ $json.subject }}\nMessage: {{ $json.body }}\nProperty: {{ $json.property_address || 'Not specified' }}\nCategory: {{ $json.category }}"
+            }
+          ]
+        }
+      },
+      "id": "ai-draft-reply",
+      "name": "AI Draft Reply",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [940, 300],
+      "credentials": {
+        "openAiApi": {
+          "id": "REPLACE_WITH_YOUR_OPENAI_CREDENTIAL_ID",
+          "name": "OpenAI account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.ENHUB_APP_URL || 'http://localhost:3000' }}/api/webhooks/inbound-enquiry",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"agent_email\": \"{{ $env.AGENT_EMAIL || 'REPLACE_WITH_AGENT_EMAIL' }}\",\n  \"client_name\": \"{{ $('Parse AI Response').item.json.client_name }}\",\n  \"client_email\": \"{{ $('Parse AI Response').item.json.client_email }}\",\n  \"client_phone\": {{ $('Parse AI Response').item.json.client_phone ? '\"' + $('Parse AI Response').item.json.client_phone + '\"' : 'null' }},\n  \"subject\": \"{{ $('Parse AI Response').item.json.subject }}\",\n  \"body\": {{ JSON.stringify($('Parse AI Response').item.json.body) }},\n  \"category\": \"{{ $('Parse AI Response').item.json.category }}\",\n  \"property_address\": {{ $('Parse AI Response').item.json.property_address ? JSON.stringify($('Parse AI Response').item.json.property_address) : 'null' }},\n  \"source\": \"{{ $('Parse AI Response').item.json.source || 'Email' }}\",\n  \"ai_draft\": {{ JSON.stringify($json.text || $json.message?.content || '') }}\n}",
+        "options": {}
+      },
+      "id": "call-enhub-webhook",
+      "name": "Send to EnHub",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1180, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_WITH_YOUR_HEADER_AUTH_CREDENTIAL_ID",
+          "name": "EnHub Webhook Auth"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Gmail Trigger": {
+      "main": [
+        [
+          {
+            "node": "AI Parse Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Parse Email": {
+      "main": [
+        [
+          {
+            "node": "Parse AI Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse AI Response": {
+      "main": [
+        [
+          {
+            "node": "AI Draft Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Draft Reply": {
+      "main": [
+        [
+          {
+            "node": "Send to EnHub",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "EnHub"
+    }
+  ]
+}

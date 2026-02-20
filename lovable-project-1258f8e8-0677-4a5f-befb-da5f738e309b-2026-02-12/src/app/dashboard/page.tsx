@@ -2,11 +2,14 @@
 
 import { useState, useEffect } from "react";
 import { AppSidebar } from "@/components/AppSidebar";
-import { mockEnquiries } from "@/data/mockEnquiries";
+import { useEnquiries } from "@/hooks/useEnquiries";
+import { useRealtimeInbox } from "@/hooks/useRealtimeInbox";
+import { useEmailScanPolling } from "@/hooks/useEmailScanPolling";
 import { channelConfig } from "@/lib/channelConfig";
-import { Phone, ChevronRight, ArrowUp } from "lucide-react";
+import { Phone, ChevronRight, ArrowUp, Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
+import { useQuery } from "@tanstack/react-query";
 
 /* -- count-up hook -- */
 function useCountUp(target: number, duration = 1800) {
@@ -84,25 +87,35 @@ const cardHover = {
   transition: { duration: 0.2, ease: "easeOut" },
 };
 
+interface Stats {
+  autoHandled: number;
+  promotedHot: number;
+  waitingReply: number;
+}
+
 export default function DashboardPage() {
   const router = useRouter();
+  const { data: enquiries, isLoading: enquiriesLoading } = useEnquiries();
 
-  const hotLeads = mockEnquiries
+  useRealtimeInbox();
+  useEmailScanPolling(true, 30000);
+
+  const { data: stats } = useQuery<Stats>({
+    queryKey: ["stats"],
+    queryFn: async () => {
+      const res = await fetch("/api/stats");
+      if (!res.ok) throw new Error("Failed to fetch stats");
+      return res.json();
+    },
+  });
+
+  const hotLeads = (enquiries ?? [])
     .filter((e) => e.status === "hot")
     .sort((a, b) => a.lastActivity.getTime() - b.lastActivity.getTime())
     .slice(0, 5);
 
-  const stats = {
-    autoHandled: mockEnquiries.filter((e) => e.status === "auto_handled")
-      .length,
-    promotedHot: hotLeads.length,
-    waitingReply: mockEnquiries.filter((e) =>
-      e.messages.some((m) => m.status === "pending_approval")
-    ).length,
-  };
-
-  const handledCount = useCountUp(stats.autoHandled, 2000);
-  const promotedCount = useCountUp(stats.promotedHot, 1600);
+  const handledCount = useCountUp(stats?.autoHandled ?? 0, 2000);
+  const promotedCount = useCountUp(stats?.promotedHot ?? 0, 1600);
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -138,7 +151,7 @@ export default function DashboardPage() {
             {[
               { label: "Auto-handled", value: handledCount, accent: true },
               { label: "Promoted", value: promotedCount, accent: true },
-              { label: "Waiting", value: stats.waitingReply, accent: false },
+              { label: "Waiting", value: stats?.waitingReply ?? 0, accent: false },
             ].map((stat, i) => (
               <motion.div
                 key={stat.label}
@@ -222,7 +235,11 @@ export default function DashboardPage() {
               </span>
             </div>
 
-            {hotLeads.length === 0 ? (
+            {enquiriesLoading ? (
+              <div className="rounded-2xl border border-border/50 bg-card p-12 flex justify-center">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : hotLeads.length === 0 ? (
               <div className="rounded-2xl border border-border/50 bg-card p-12 text-center">
                 <p className="text-muted-foreground text-sm">
                   No calls needed right now. Everything is handled.

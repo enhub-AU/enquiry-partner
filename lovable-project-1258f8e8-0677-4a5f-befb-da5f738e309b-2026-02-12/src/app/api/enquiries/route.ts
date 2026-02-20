@@ -13,6 +13,7 @@ export async function GET(request: NextRequest) {
 
   const { searchParams } = request.nextUrl;
   const status = searchParams.get("status");
+  const search = searchParams.get("search");
 
   let query = supabase
     .from("enquiries")
@@ -21,6 +22,13 @@ export async function GET(request: NextRequest) {
 
   if (status) {
     query = query.eq("status", status);
+  }
+
+  if (search) {
+    // Search across contact name, email, phone, subject, and property address
+    query = query.or(
+      `subject.ilike.%${search}%,property_address.ilike.%${search}%,contact.name.ilike.%${search}%,contact.email.ilike.%${search}%,contact.phone.ilike.%${search}%`
+    );
   }
 
   query = query.order("last_activity_at", { ascending: false });

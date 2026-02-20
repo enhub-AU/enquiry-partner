@@ -1,11 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect } from "react";
 import { AppSidebar } from "@/components/AppSidebar";
+import { useSettings } from "@/hooks/useSettings";
 import { motion } from "framer-motion";
 import {
   User,
-  Mail,
   Phone,
   Camera,
   Plug,
@@ -16,19 +16,18 @@ import {
   Shield,
   LogOut,
   Lock,
-  CheckCircle2,
-  AlertCircle,
   ChevronRight,
-  Globe,
-  Home,
+  Loader2,
 } from "lucide-react";
+import { EmailAccountSetup } from "@/components/EmailAccountSetup";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
 const fadeUp = {
   hidden: { opacity: 0, y: 12 },
   visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease: [0.25, 0.1, 0.25, 1] } },
 };
 
-/* ── Toggle component ── */
+/* -- Toggle component -- */
 function Toggle({
   checked,
   onChange,
@@ -53,7 +52,7 @@ function Toggle({
   );
 }
 
-/* ── Section wrapper ── */
+/* -- Section wrapper -- */
 function Section({
   icon: Icon,
   title,
@@ -81,7 +80,7 @@ function Section({
   );
 }
 
-/* ── Field row ── */
+/* -- Field row -- */
 function Field({
   label,
   children,
@@ -99,73 +98,64 @@ function Field({
   );
 }
 
-/* ── Connection card ── */
-function ConnectionCard({
-  icon: Icon,
-  name,
-  connected,
-  helper,
-}: {
-  icon: React.ElementType;
-  name: string;
-  connected: boolean;
-  helper: string;
-}) {
-  return (
-    <div className="flex items-center gap-4 p-4 rounded-xl border border-border/30 bg-card/40">
-      <div className="h-10 w-10 rounded-xl bg-muted/60 flex items-center justify-center flex-shrink-0">
-        <Icon className="h-4 w-4 text-foreground/50" />
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 mb-0.5">
-          <span className="text-[13px] font-medium text-foreground">{name}</span>
-          {connected ? (
-            <span className="inline-flex items-center gap-1 text-[10px] text-[hsl(var(--channel-sms))] font-medium">
-              <CheckCircle2 className="h-3 w-3" />
-              Connected
-            </span>
-          ) : (
-            <span className="inline-flex items-center gap-1 text-[10px] text-[hsl(var(--warm))] font-medium">
-              <AlertCircle className="h-3 w-3" />
-              Needs attention
-            </span>
-          )}
-        </div>
-        <p className="text-[11px] text-muted-foreground/50">{helper}</p>
-      </div>
-      <button className="text-[12px] text-foreground/70 hover:text-foreground flex items-center gap-1 transition-colors flex-shrink-0">
-        {connected ? "View" : "Connect"}
-        <ChevronRight className="h-3 w-3" />
-      </button>
-    </div>
-  );
+interface Profile {
+  id: string;
+  full_name: string | null;
+  email: string | null;
+  phone: string | null;
+  agency_name: string | null;
+  avatar_url: string | null;
+  org_id: string | null;
 }
 
 export default function SettingsPage() {
-  const [name, setName] = useState("Jordan Reynolds");
-  const [email, setEmail] = useState("jordan@raywhite.com.au");
-  const [phone, setPhone] = useState("0412 345 678");
+  const queryClient = useQueryClient();
+  const { settings, isLoading: settingsLoading, updateSettings, isSaving } = useSettings();
 
-  const [notifyHot, setNotifyHot] = useState(true);
-  const [notifyUncalled, setNotifyUncalled] = useState(true);
-  const [notifyWarmReply, setNotifyWarmReply] = useState(true);
-  const [uncalledMins, setUncalledMins] = useState("15");
-  const [deliveryPush, setDeliveryPush] = useState(true);
-  const [deliveryEmail, setDeliveryEmail] = useState(true);
-  const [deliverySms, setDeliverySms] = useState(false);
+  const { data: profile, isLoading: profileLoading } = useQuery<Profile>({
+    queryKey: ["profile"],
+    queryFn: async () => {
+      const res = await fetch("/api/profile");
+      if (!res.ok) throw new Error("Failed to fetch profile");
+      return res.json();
+    },
+  });
 
-  const [messagingMode, setMessagingMode] = useState<"draft" | "safe" | "full">("draft");
-
-  const [autoPrice, setAutoPrice] = useState(true);
-  const [escalateIntent, setEscalateIntent] = useState(true);
-  const [escalateInspection, setEscalateInspection] = useState(true);
-
-  const [crmEnabled, setCrmEnabled] = useState(false);
-  const [crmSendDetails, setCrmSendDetails] = useState(true);
-  const [crmSendSummary, setCrmSendSummary] = useState(true);
+  const profileMutation = useMutation({
+    mutationFn: async (updates: Partial<Profile>) => {
+      const res = await fetch("/api/profile", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updates),
+      });
+      if (!res.ok) throw new Error("Failed to update profile");
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.setQueryData(["profile"], data);
+    },
+  });
 
   const inputClass =
     "h-10 w-full rounded-xl border border-border/40 bg-background/60 px-4 text-[13px] text-foreground placeholder:text-muted-foreground/35 focus:outline-none focus:ring-1 focus:ring-ring/30 focus:border-border transition-all duration-150";
+
+  if (settingsLoading || profileLoading) {
+    return (
+      <div className="flex h-screen overflow-hidden bg-background">
+        <AppSidebar />
+        <main className="flex-1 flex items-center justify-center">
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        </main>
+      </div>
+    );
+  }
+
+  const initials = profile?.full_name
+    ?.split(" ")
+    .map((n) => n[0])
+    .slice(0, 2)
+    .join("")
+    .toUpperCase() || "??";
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
@@ -190,25 +180,43 @@ export default function SettingsPage() {
             <div className="flex items-center gap-4 mb-6">
               <div className="relative">
                 <div className="h-16 w-16 rounded-full bg-muted flex items-center justify-center text-sm font-semibold text-muted-foreground">
-                  JR
+                  {initials}
                 </div>
                 <button className="absolute -bottom-1 -right-1 h-7 w-7 rounded-full bg-foreground text-background flex items-center justify-center hover:opacity-85 transition-opacity">
                   <Camera className="h-3 w-3" />
                 </button>
               </div>
               <div>
-                <p className="text-[13px] font-medium text-foreground">{name}</p>
+                <p className="text-[13px] font-medium text-foreground">{profile?.full_name || "—"}</p>
                 <p className="text-[11px] text-muted-foreground/40">Agent</p>
               </div>
             </div>
             <Field label="Name">
-              <input type="text" value={name} onChange={(e) => setName(e.target.value)} className={inputClass} />
+              <input
+                type="text"
+                defaultValue={profile?.full_name || ""}
+                onBlur={(e) => {
+                  if (e.target.value !== profile?.full_name) {
+                    profileMutation.mutate({ full_name: e.target.value });
+                  }
+                }}
+                className={inputClass}
+              />
             </Field>
             <Field label="Email">
-              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className={inputClass} />
+              <input type="email" value={profile?.email || ""} disabled className={`${inputClass} opacity-60`} />
             </Field>
             <Field label="Phone">
-              <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} className={inputClass} />
+              <input
+                type="tel"
+                defaultValue={profile?.phone || ""}
+                onBlur={(e) => {
+                  if (e.target.value !== (profile?.phone || "")) {
+                    profileMutation.mutate({ phone: e.target.value });
+                  }
+                }}
+                className={inputClass}
+              />
             </Field>
             <Field label="Role">
               <span className="text-[13px] text-muted-foreground/60">Agent</span>
@@ -216,44 +224,58 @@ export default function SettingsPage() {
           </Section>
 
           <Section icon={Plug} title="Inbox Connections">
-            <div className="space-y-3">
-              <ConnectionCard icon={Mail} name="Email inbox" connected={true} helper="EnHub is receiving enquiries from Gmail, including REA and Domain portal emails" />
-            </div>
+            <EmailAccountSetup />
           </Section>
 
           <Section icon={Bell} title="Notifications">
             <div className="space-y-4 mb-6">
               <div className="flex items-center justify-between">
                 <span className="text-[13px] text-foreground/80">Notify me when a lead turns hot</span>
-                <Toggle checked={notifyHot} onChange={setNotifyHot} />
+                <Toggle
+                  checked={settings?.notify_hot_lead ?? true}
+                  onChange={(v) => updateSettings({ notify_hot_lead: v })}
+                />
               </div>
               <div className="flex items-center justify-between gap-4">
                 <span className="text-[13px] text-foreground/80">Notify if a hot lead hasn&apos;t been called within</span>
                 <div className="flex items-center gap-2">
-                  <select value={uncalledMins} onChange={(e) => setUncalledMins(e.target.value)} className="h-8 px-2 rounded-lg border border-border/40 bg-background text-[12px] text-foreground focus:outline-none focus:ring-1 focus:ring-ring/30">
+                  <select
+                    value={String(settings?.stale_lead_minutes ?? 15)}
+                    onChange={(e) => updateSettings({ stale_lead_minutes: parseInt(e.target.value) })}
+                    className="h-8 px-2 rounded-lg border border-border/40 bg-background text-[12px] text-foreground focus:outline-none focus:ring-1 focus:ring-ring/30"
+                  >
                     <option value="5">5 min</option>
                     <option value="10">10 min</option>
                     <option value="15">15 min</option>
                     <option value="30">30 min</option>
                   </select>
-                  <Toggle checked={notifyUncalled} onChange={setNotifyUncalled} />
+                  <Toggle
+                    checked={settings?.notify_stale_lead ?? true}
+                    onChange={(v) => updateSettings({ notify_stale_lead: v })}
+                  />
                 </div>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-[13px] text-foreground/80">Notify me when a warm lead replies</span>
-                <Toggle checked={notifyWarmReply} onChange={setNotifyWarmReply} />
+                <Toggle
+                  checked={settings?.notify_warm_reply ?? true}
+                  onChange={(v) => updateSettings({ notify_warm_reply: v })}
+                />
               </div>
             </div>
             <div className="pt-4 border-t border-border/15">
               <p className="text-[11px] text-muted-foreground/40 mb-3 tracking-wide uppercase font-medium">Delivery</p>
               <div className="flex gap-6">
                 {[
-                  { label: "Push", checked: deliveryPush, onChange: setDeliveryPush },
-                  { label: "Email", checked: deliveryEmail, onChange: setDeliveryEmail },
-                  { label: "SMS", checked: deliverySms, onChange: setDeliverySms },
-                ].map(({ label, checked, onChange }) => (
+                  { label: "Push", field: "delivery_push" as const, value: settings?.delivery_push ?? true },
+                  { label: "Email", field: "delivery_email" as const, value: settings?.delivery_email ?? true },
+                  { label: "SMS", field: "delivery_sms" as const, value: settings?.delivery_sms ?? false },
+                ].map(({ label, field, value }) => (
                   <label key={label} className="flex items-center gap-2 cursor-pointer">
-                    <Toggle checked={checked} onChange={onChange} />
+                    <Toggle
+                      checked={value}
+                      onChange={(v) => updateSettings({ [field]: v })}
+                    />
                     <span className="text-[12px] text-muted-foreground/60">{label}</span>
                   </label>
                 ))}
@@ -268,8 +290,15 @@ export default function SettingsPage() {
                 { value: "safe" as const, label: "Auto-send safe replies", desc: "Price guides and acknowledgements sent automatically" },
                 { value: "full" as const, label: "Full auto-send", desc: "All qualifying messages sent without review" },
               ].map((opt) => (
-                <label key={opt.value} className={`flex items-start gap-3 p-3.5 rounded-xl border cursor-pointer transition-colors duration-150 ${messagingMode === opt.value ? "border-foreground/20 bg-muted/30" : "border-border/30 hover:bg-muted/15"}`}>
-                  <input type="radio" name="messagingMode" value={opt.value} checked={messagingMode === opt.value} onChange={() => setMessagingMode(opt.value)} className="mt-0.5 accent-foreground" />
+                <label key={opt.value} className={`flex items-start gap-3 p-3.5 rounded-xl border cursor-pointer transition-colors duration-150 ${(settings?.ai_mode ?? "draft") === opt.value ? "border-foreground/20 bg-muted/30" : "border-border/30 hover:bg-muted/15"}`}>
+                  <input
+                    type="radio"
+                    name="messagingMode"
+                    value={opt.value}
+                    checked={(settings?.ai_mode ?? "draft") === opt.value}
+                    onChange={() => updateSettings({ ai_mode: opt.value })}
+                    className="mt-0.5 accent-foreground"
+                  />
                   <div>
                     <p className="text-[13px] font-medium text-foreground">{opt.label}</p>
                     <p className="text-[11px] text-muted-foreground/50">{opt.desc}</p>
@@ -289,20 +318,22 @@ export default function SettingsPage() {
 
           <Section icon={Flame} title="Lead Handling">
             <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <span className="text-[13px] text-foreground/80">Auto-handle price-guide enquiries</span>
-                <Toggle checked={autoPrice} onChange={setAutoPrice} />
-              </div>
               <div className="pt-4 border-t border-border/15">
                 <p className="text-[11px] text-muted-foreground/40 mb-3 tracking-wide uppercase font-medium">Escalate to hot when</p>
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <span className="text-[13px] text-foreground/80">Buyer replies with intent</span>
-                    <Toggle checked={escalateIntent} onChange={setEscalateIntent} />
+                    <Toggle
+                      checked={settings?.notify_inspection_request ?? true}
+                      onChange={(v) => updateSettings({ notify_inspection_request: v })}
+                    />
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-[13px] text-foreground/80">Buyer requests inspection</span>
-                    <Toggle checked={escalateInspection} onChange={setEscalateInspection} />
+                    <Toggle
+                      checked={settings?.notify_inspection_request ?? true}
+                      onChange={(v) => updateSettings({ notify_inspection_request: v })}
+                    />
                   </div>
                 </div>
               </div>
@@ -312,35 +343,7 @@ export default function SettingsPage() {
 
           <Section icon={ArrowRight} title="CRM Handoff">
             <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <span className="text-[13px] text-foreground/80">Send hot leads to CRM</span>
-                <Toggle checked={crmEnabled} onChange={setCrmEnabled} />
-              </div>
-              {crmEnabled && (
-                <div className="space-y-4 pt-3 animate-fade-in">
-                  <Field label="Destination">
-                    <select className="h-10 w-full rounded-xl border border-border/40 bg-background/60 px-4 text-[13px] text-foreground focus:outline-none focus:ring-1 focus:ring-ring/30">
-                      <option>Select CRM</option>
-                      <option>Agentbox</option>
-                      <option>Rex</option>
-                      <option>VaultRE</option>
-                    </select>
-                  </Field>
-                  <div className="pt-3 border-t border-border/15">
-                    <p className="text-[11px] text-muted-foreground/40 mb-3 tracking-wide uppercase font-medium">What gets sent</p>
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between">
-                        <span className="text-[13px] text-foreground/80">Contact details</span>
-                        <Toggle checked={crmSendDetails} onChange={setCrmSendDetails} />
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-[13px] text-foreground/80">Conversation summary</span>
-                        <Toggle checked={crmSendSummary} onChange={setCrmSendSummary} />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
+              <p className="text-[12px] text-muted-foreground/50">CRM integration coming soon.</p>
             </div>
           </Section>
 
@@ -362,6 +365,13 @@ export default function SettingsPage() {
               </button>
             </div>
           </Section>
+
+          {isSaving && (
+            <div className="fixed bottom-6 right-6 bg-foreground text-background px-4 py-2 rounded-xl text-[12px] font-medium flex items-center gap-2 shadow-lg">
+              <Loader2 className="h-3 w-3 animate-spin" />
+              Saving...
+            </div>
+          )}
         </motion.div>
       </main>
     </div>

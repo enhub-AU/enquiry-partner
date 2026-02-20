@@ -1,0 +1,215 @@
+{
+  "name": "EnHub — Handle Reply Email",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "filters": {
+          "readStatus": "unread",
+          "receivedAfter": "={{ $now.minus(1, 'day').toISO() }}"
+        },
+        "options": {
+          "downloadAttachments": false
+        }
+      },
+      "id": "gmail-trigger-replies",
+      "name": "Gmail Trigger (Replies)",
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1.2,
+      "position": [220, 300],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REPLACE_WITH_YOUR_GMAIL_CREDENTIAL_ID",
+          "name": "Gmail account"
+        }
+      },
+      "notes": "This trigger watches for reply emails. You'll need to differentiate between new enquiries and replies — e.g. by checking if the subject starts with 'Re:' or if the thread has an existing enquiry_id."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Check if this is a reply (subject starts with Re:)\nconst subject = $input.first().json.subject || '';\nconst isReply = subject.toLowerCase().startsWith('re:');\n\nif (!isReply) {\n  // Not a reply — skip this workflow\n  return [];\n}\n\nreturn $input.all();"
+      },
+      "id": "filter-replies",
+      "name": "Filter Replies Only",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "model": "gpt-4o-mini",
+        "options": {},
+        "messages": {
+          "values": [
+            {
+              "role": "system",
+              "content": "You are parsing a reply email in a real estate context. Extract:\n\n{\n  \"client_email\": \"sender's email\",\n  \"body\": \"cleaned message body (remove quoted text from previous emails)\",\n  \"is_inspection_request\": true if they mention inspection/viewing/open home,\n  \"is_offer_intent\": true if they mention offer/purchase/buy/bid\n}\n\nReturn ONLY valid JSON."
+            },
+            {
+              "role": "user",
+              "content": "=From: {{ $json.from }}\nSubject: {{ $json.subject }}\n\nBody:\n{{ $json.snippet || $json.textPlain || $json.text }}"
+            }
+          ]
+        },
+        "jsonOutput": true
+      },
+      "id": "ai-parse-reply",
+      "name": "AI Parse Reply",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [700, 300],
+      "credentials": {
+        "openAiApi": {
+          "id": "REPLACE_WITH_YOUR_OPENAI_CREDENTIAL_ID",
+          "name": "OpenAI account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const aiOutput = JSON.parse($input.first().json.text || $input.first().json.message?.content || '{}');\nreturn [{ json: aiOutput }];"
+      },
+      "id": "parse-reply-response",
+      "name": "Parse Reply Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [940, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.ENHUB_APP_URL || 'http://localhost:3000' }}/api/enquiries?search={{ encodeURIComponent($json.client_email) }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "id": "lookup-enquiry",
+      "name": "Lookup Enquiry by Email",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1180, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_WITH_YOUR_HEADER_AUTH_CREDENTIAL_ID",
+          "name": "EnHub Webhook Auth"
+        }
+      },
+      "notes": "Looks up the existing enquiry by the client's email. The first result should be the most recent matching enquiry."
+    },
+    {
+      "parameters": {
+        "jsCode": "const enquiries = $input.first().json;\n\nif (!Array.isArray(enquiries) || enquiries.length === 0) {\n  // No matching enquiry found — stop\n  return [];\n}\n\n// Use the most recent enquiry for this client\nconst enquiry = enquiries[0];\nconst parsed = $('Parse Reply Response').first().json;\n\nreturn [{\n  json: {\n    enquiry_id: enquiry.id,\n    content: parsed.body,\n    is_inspection_request: parsed.is_inspection_request || false,\n    is_offer_intent: parsed.is_offer_intent || false\n  }\n}];"
+      },
+      "id": "prepare-update-payload",
+      "name": "Prepare Update Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1420, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.ENHUB_APP_URL || 'http://localhost:3000' }}/api/webhooks/update-enquiry",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"enquiry_id\": \"{{ $json.enquiry_id }}\",\n  \"content\": {{ JSON.stringify($json.content) }},\n  \"is_inspection_request\": {{ $json.is_inspection_request }},\n  \"is_offer_intent\": {{ $json.is_offer_intent }}\n}",
+        "options": {}
+      },
+      "id": "call-update-webhook",
+      "name": "Update EnHub Enquiry",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1660, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_WITH_YOUR_HEADER_AUTH_CREDENTIAL_ID",
+          "name": "EnHub Webhook Auth"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Gmail Trigger (Replies)": {
+      "main": [
+        [
+          {
+            "node": "Filter Replies Only",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Replies Only": {
+      "main": [
+        [
+          {
+            "node": "AI Parse Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Parse Reply": {
+      "main": [
+        [
+          {
+            "node": "Parse Reply Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Reply Response": {
+      "main": [
+        [
+          {
+            "node": "Lookup Enquiry by Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lookup Enquiry by Email": {
+      "main": [
+        [
+          {
+            "node": "Prepare Update Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Update Payload": {
+      "main": [
+        [
+          {
+            "node": "Update EnHub Enquiry",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "EnHub"
+    }
+  ]
+}

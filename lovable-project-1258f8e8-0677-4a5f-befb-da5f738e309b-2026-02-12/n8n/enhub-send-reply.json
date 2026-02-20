@@ -1,0 +1,90 @@
+{
+  "name": "EnHub — Send Reply via SMTP",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "send-reply",
+        "authentication": "headerAuth",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook — Send Reply",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [220, 300],
+      "webhookId": "send-reply",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_WITH_YOUR_HEADER_AUTH_CREDENTIAL_ID",
+          "name": "EnHub Webhook Auth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.ENHUB_APP_URL || 'http://localhost:3000' }}/api/messages?enquiry_id={{ $json.body.enquiry_id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "id": "fetch-context",
+      "name": "Fetch Message Context",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [460, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_WITH_YOUR_HEADER_AUTH_CREDENTIAL_ID",
+          "name": "EnHub Webhook Auth"
+        }
+      },
+      "notes": "This step is optional — the webhook payload already contains the content. You may want to skip this if auth is an issue and just use the payload directly."
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $env.AGENT_EMAIL || 'REPLACE_WITH_AGENT_EMAIL' }}",
+        "toEmail": "={{ $('Webhook — Send Reply').item.json.body.to_email }}",
+        "subject": "={{ $('Webhook — Send Reply').item.json.body.subject || 'Re: Your enquiry' }}",
+        "emailType": "text",
+        "message": "={{ $('Webhook — Send Reply').item.json.body.content }}",
+        "options": {
+          "replyTo": "={{ $env.AGENT_EMAIL || 'REPLACE_WITH_AGENT_EMAIL' }}"
+        }
+      },
+      "id": "send-email",
+      "name": "Send Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [700, 300],
+      "credentials": {
+        "smtp": {
+          "id": "REPLACE_WITH_YOUR_SMTP_CREDENTIAL_ID",
+          "name": "SMTP"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook — Send Reply": {
+      "main": [
+        [
+          {
+            "node": "Send Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "EnHub"
+    }
+  ]
+}

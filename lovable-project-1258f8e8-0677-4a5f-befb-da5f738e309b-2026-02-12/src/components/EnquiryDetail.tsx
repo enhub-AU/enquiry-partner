@@ -14,9 +14,12 @@ import {
   Sparkles,
   MapPin,
   Flame,
+  Loader2,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 /* -- live elapsed timer -- */
 function useElapsed(since: Date) {
@@ -74,7 +77,21 @@ function EnquiryStatusBadge({ enquiry }: { enquiry: Enquiry }) {
 }
 
 /* -- Message bubble -- */
-function MessageBubble({ message }: { message: Message }) {
+function MessageBubble({
+  message,
+  isEditing,
+  editContent,
+  onEditChange,
+  onSaveEdit,
+  onCancelEdit,
+}: {
+  message: Message;
+  isEditing?: boolean;
+  editContent?: string;
+  onEditChange?: (v: string) => void;
+  onSaveEdit?: () => void;
+  onCancelEdit?: () => void;
+}) {
   const isClient = message.sender === "client";
   const isAI = message.sender === "ai";
   const isPending = message.status === "pending_approval";
@@ -88,7 +105,7 @@ function MessageBubble({ message }: { message: Message }) {
     >
       <div
         className={cn(
-          "rounded-2xl px-4 py-3 text-[13px] leading-relaxed",
+          "rounded-2xl px-4 py-3 text-[13px] leading-relaxed w-full",
           isClient
             ? "bg-muted/60 text-foreground rounded-bl-sm"
             : isPending
@@ -96,7 +113,28 @@ function MessageBubble({ message }: { message: Message }) {
             : "bg-foreground text-background rounded-br-sm"
         )}
       >
-        {message.content}
+        {isEditing ? (
+          <div className="space-y-2">
+            <textarea
+              value={editContent}
+              onChange={(e) => onEditChange?.(e.target.value)}
+              rows={4}
+              className="w-full bg-background/80 text-foreground text-[13px] rounded-lg border border-border/40 p-2 resize-none focus:outline-none focus:ring-1 focus:ring-ring/30"
+            />
+            <div className="flex gap-2 justify-end">
+              <Button variant="ghost" size="sm" onClick={onCancelEdit} className="h-7 text-[11px]">
+                <X className="h-3 w-3 mr-1" />
+                Cancel
+              </Button>
+              <Button size="sm" onClick={onSaveEdit} className="h-7 text-[11px]">
+                <Check className="h-3 w-3 mr-1" />
+                Save
+              </Button>
+            </div>
+          </div>
+        ) : (
+          message.content
+        )}
       </div>
       <div className="flex items-center gap-2 px-1">
         <span className="text-[10px] text-muted-foreground/40">
@@ -126,10 +164,106 @@ function MessageBubble({ message }: { message: Message }) {
 
 export function EnquiryDetail({ enquiry }: EnquiryDetailProps) {
   const [replyText, setReplyText] = useState("");
-  const hasPendingDraft = enquiry.messages.some(
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+  const [editContent, setEditContent] = useState("");
+  const queryClient = useQueryClient();
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const pendingDraft = enquiry.messages.find(
     (m) => m.status === "pending_approval"
   );
+  const hasPendingDraft = !!pendingDraft;
   const ChannelIcon = channelConfig[enquiry.channel].icon;
+
+  // Mark as read on open
+  useEffect(() => {
+    if (!enquiry.isRead) {
+      fetch(`/api/enquiries/${enquiry.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ is_read: true }),
+      }).then(() => {
+        queryClient.invalidateQueries({ queryKey: ["enquiries"] });
+      });
+    }
+  }, [enquiry.id, enquiry.isRead, queryClient]);
+
+  // Scroll to bottom on new messages
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [enquiry.messages.length]);
+
+  // Approve draft mutation
+  const approveMutation = useMutation({
+    mutationFn: async (messageId: string) => {
+      const res = await fetch(`/api/messages/${messageId}/approve`, {
+        method: "POST",
+      });
+      if (!res.ok) throw new Error("Failed to approve");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["enquiries"] });
+      queryClient.invalidateQueries({ queryKey: ["messages"] });
+      queryClient.invalidateQueries({ queryKey: ["stats"] });
+    },
+  });
+
+  // Edit message mutation
+  const editMutation = useMutation({
+    mutationFn: async ({ id, content }: { id: string; content: string }) => {
+      const res = await fetch(`/api/messages/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content }),
+      });
+      if (!res.ok) throw new Error("Failed to edit");
+      return res.json();
+    },
+    onSuccess: () => {
+      setEditingMessageId(null);
+      queryClient.invalidateQueries({ queryKey: ["enquiries"] });
+      queryClient.invalidateQueries({ queryKey: ["messages"] });
+    },
+  });
+
+  // Send message mutation
+  const sendMutation = useMutation({
+    mutationFn: async (content: string) => {
+      const res = await fetch("/api/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enquiry_id: enquiry.id, content }),
+      });
+      if (!res.ok) throw new Error("Failed to send");
+      return res.json();
+    },
+    onSuccess: () => {
+      setReplyText("");
+      queryClient.invalidateQueries({ queryKey: ["enquiries"] });
+      queryClient.invalidateQueries({ queryKey: ["messages"] });
+      queryClient.invalidateQueries({ queryKey: ["stats"] });
+    },
+  });
+
+  const handleSend = () => {
+    const text = replyText.trim();
+    if (!text) return;
+    sendMutation.mutate(text);
+  };
+
+  const handleStartEdit = () => {
+    if (pendingDraft) {
+      setEditingMessageId(pendingDraft.id);
+      setEditContent(pendingDraft.content);
+    }
+  };
+
+  const handleSaveEdit = () => {
+    if (editingMessageId && editContent.trim()) {
+      editMutation.mutate({ id: editingMessageId, content: editContent.trim() });
+    }
+  };
 
   return (
     <div className="flex h-full">
@@ -171,12 +305,21 @@ export function EnquiryDetail({ enquiry }: EnquiryDetailProps) {
         {/* Messages */}
         <div className="flex-1 overflow-y-auto px-6 py-6 space-y-5">
           {enquiry.messages.map((message) => (
-            <MessageBubble key={message.id} message={message} />
+            <MessageBubble
+              key={message.id}
+              message={message}
+              isEditing={editingMessageId === message.id}
+              editContent={editContent}
+              onEditChange={setEditContent}
+              onSaveEdit={handleSaveEdit}
+              onCancelEdit={() => setEditingMessageId(null)}
+            />
           ))}
+          <div ref={messagesEndRef} />
         </div>
 
         {/* Action bar for pending drafts */}
-        {hasPendingDraft && (
+        {hasPendingDraft && !editingMessageId && (
           <div className="flex-shrink-0 px-6 py-3 border-t border-border/20 bg-primary/3 flex items-center gap-2">
             <Sparkles className="h-3.5 w-3.5 text-primary/50" />
             <span className="text-[12px] text-muted-foreground/60 flex-1">
@@ -186,12 +329,23 @@ export function EnquiryDetail({ enquiry }: EnquiryDetailProps) {
               variant="outline"
               size="sm"
               className="h-8 gap-1.5 text-[12px]"
+              onClick={handleStartEdit}
+              disabled={editMutation.isPending}
             >
               <Edit3 className="h-3 w-3" />
               Edit
             </Button>
-            <Button size="sm" className="h-8 gap-1.5 text-[12px]">
-              <Check className="h-3 w-3" />
+            <Button
+              size="sm"
+              className="h-8 gap-1.5 text-[12px]"
+              onClick={() => pendingDraft && approveMutation.mutate(pendingDraft.id)}
+              disabled={approveMutation.isPending}
+            >
+              {approveMutation.isPending ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <Check className="h-3 w-3" />
+              )}
               Approve & Send
             </Button>
           </div>
@@ -206,12 +360,26 @@ export function EnquiryDetail({ enquiry }: EnquiryDetailProps) {
                   placeholder="Type a reply..."
                   value={replyText}
                   onChange={(e) => setReplyText(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      handleSend();
+                    }
+                  }}
                   rows={1}
                   className="w-full resize-none rounded-xl border border-border/40 bg-background/60 px-4 py-2.5 text-[13px] text-foreground placeholder:text-muted-foreground/35 focus:outline-none focus:ring-1 focus:ring-ring/30 focus:border-border transition-all duration-150"
                 />
               </div>
-              <button className="h-9 w-9 rounded-xl bg-foreground text-background flex items-center justify-center transition-opacity duration-150 hover:opacity-85 active:scale-[0.96] flex-shrink-0">
-                <Send className="h-4 w-4" />
+              <button
+                onClick={handleSend}
+                disabled={!replyText.trim() || sendMutation.isPending}
+                className="h-9 w-9 rounded-xl bg-foreground text-background flex items-center justify-center transition-opacity duration-150 hover:opacity-85 active:scale-[0.96] flex-shrink-0 disabled:opacity-40"
+              >
+                {sendMutation.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Send className="h-4 w-4" />
+                )}
               </button>
             </div>
           </div>
